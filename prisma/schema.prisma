@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  passwordHash  String
+  role          String         @default("SALES_EXECUTIVE") // ADMIN, SALES_MANAGER, SALES_EXECUTIVE, VIEWER
+  avatar        String?
+  department    String?        @default("Sales")
+  active        Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  assignedLeads Lead[]         @relation("AssignedLeads")
+  opportunities Opportunity[]  @relation("OpportunityOwner")
+  activities    Activity[]
+  tasks         Task[]         @relation("AssignedTasks")
+  notifications Notification[]
+  auditLogs     AuditLog[]
+}
+
+model Company {
+  id             String        @id @default(uuid())
+  name           String        @unique
+  industry       String
+  website        String?
+  location       String?
+  phone          String?
+  email          String?
+  description    String?
+  employeeCount  Int?
+  annualRevenue  Float?
+  status         String        @default("ACTIVE") // ACTIVE, INACTIVE, PROSPECT
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  contacts       Contact[]
+  leads          Lead[]
+  opportunities  Opportunity[]
+  activities     Activity[]
+  tasks          Task[]
+
+  @@index([name])
+  @@index([industry])
+}
+
+model Contact {
+  id           String        @id @default(uuid())
+  firstName    String
+  lastName     String
+  jobTitle     String?
+  companyId    String?
+  company      Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  email        String        @unique
+  phone        String?
+  linkedinUrl  String?
+  department   String?
+  status       String        @default("ACTIVE") // ACTIVE, INACTIVE, LEAD
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  leads        Lead[]
+  opportunities Opportunity[]
+  activities   Activity[]
+
+  @@index([email])
+  @@index([companyId])
+}
+
+model Lead {
+  id                      String        @id @default(uuid())
+  
+  // 26 Dossier Fields
+  companyName             String
+  industryDomain          String
+  locationCity            String
+  websiteUrl              String?
+  contactPocName          String
+  designationRole         String
+  phoneNumber             String?
+  emailAddress            String?
+  businessOverview        String?
+  problemFriction         String?
+  projectRequirement      String?
+  placementOpportunity    String?
+  priorityLevel           String        @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  pipelineStatus          String        @default("NEW")    // NEW, CONTACTED, QUALIFIED, PROPOSAL, NEGOTIATION, WON, LOST
+  nextAction              String?
+  dateAdded               String        // YYYY-MM-DD
+  leadSource              String        @default("Google Sheet Import")
+  contactMethod           String        @default("Email")
+  
+  // Scoring dimensions (0-5 each)
+  digitalPresenceScore    Int           @default(0)
+  hiringActivityScore     Int           @default(0)
+  techStackFitScore       Int           @default(0)
+  fundingRevenueScore     Int           @default(0)
+  projectUrgencyScore     Int           @default(0)
+  budgetClarityScore      Int           @default(0)
+  
+  totalLeadScore          Int           @default(0) // Calculated score
+  sourceScore             Int?          // Preserved source dossier score (e.g. 18 for Rain Industries)
+  
+  projectAllocationStatus String        @default("Available for Selection")
+  
+  // Relational references & metadata
+  companyId               String?
+  company                 Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contactId               String?
+  contact                 Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  assignedToId            String?
+  assignedTo              User?         @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
+  
+  converted               Boolean       @default(false)
+  convertedAt             DateTime?
+  
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  opportunities           Opportunity[]
+  activities              Activity[]
+  tasks                   Task[]
+
+  @@index([pipelineStatus])
+  @@index([priorityLevel])
+  @@index([companyName])
+  @@index([assignedToId])
+}
+
+model Opportunity {
+  id                String    @id @default(uuid())
+  title             String
+  companyId         String
+  company           Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId         String?
+  contact           Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  leadId            String?
+  lead              Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  
+  amount            Float     @default(0)
+  probability       Int       @default(50) // 0-100%
+  stage             String    @default("NEW") // NEW, CONTACTED, QUALIFIED, PROPOSAL, NEGOTIATION, WON, LOST
+  expectedCloseDate String?   // YYYY-MM-DD
+  
+  ownerId           String?
+  owner             User?     @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  
+  description       String?
+  status            String    @default("OPEN") // OPEN, WON, LOST
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  activities        Activity[]
+
+  @@index([stage])
+  @@index([companyId])
+  @@index([ownerId])
+}
+
+model Activity {
+  id            String       @id @default(uuid())
+  type          String       // CALL, EMAIL, MEETING, FOLLOW_UP, DEMO, PROPOSAL, NOTE
+  subject       String
+  description   String?
+  
+  companyId     String?
+  company       Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId     String?
+  contact       Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  leadId        String?
+  lead          Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  
+  userId        String?
+  user          User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  date          DateTime     @default(now())
+  status        String       @default("COMPLETED") // COMPLETED, SCHEDULED, CANCELLED
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([leadId])
+  @@index([companyId])
+  @@index([userId])
+}
+
+model Task {
+  id           String    @id @default(uuid())
+  title        String
+  description  String?
+  
+  assignedToId String?
+  assignedTo   User?     @relation("AssignedTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
+  
+  leadId       String?
+  lead         Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  companyId    String?
+  company      Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  
+  dueDate      String    // YYYY-MM-DD
+  priority     String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  status       String    @default("TODO")   // TODO, IN_PROGRESS, COMPLETED, OVERDUE
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([assignedToId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, WARNING, SUCCESS, ALERT
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String?
+  actorEmail String  @default("system")
+  action    String   // LEAD_CREATED, STAGE_CHANGED, LEAD_ASSIGNED, OPPORTUNITY_WON, TASK_COMPLETED, USER_CREATED
+  entity    String   // Lead, Opportunity, Task, User, Company, Contact
+  entityId  String
+  metadata  String?  // JSON stringified details
+  createdAt DateTime @default(now())
+
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entity])
+  @@index([createdAt])
+}
